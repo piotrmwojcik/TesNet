@@ -14,6 +14,28 @@ from typing import List, Optional
 from util.receptive_field import compute_rf_prototype
 from util.helpers import makedir, find_high_activation_crop
 
+
+def create_boolean_mask(mask_img):
+    mask_img = F.rgb_to_grayscale(mask_img)
+    m_shape = mask_img.shape
+    if len(m_shape) == 3:
+        mask_img=mask_img.squeeze()
+    else:
+        mask_img=mask_img[:, 0, :, :]
+    mask = mask_img.numpy()
+    if mask.max() - mask.min() < 0.0001:
+        return torch.zeros(mask_img.shape).bool()
+
+    mask = (mask - mask.min()) / (mask.max() - mask.min())
+    mask = (mask * 255).astype(np.uint8)
+    #max_val = np.max(mask)
+    #min_val = np.min(mask)
+    #max_mask = (mask == max_val)
+    #min_mask = (mask == min_val)
+    bool_mask = mask > 100
+    return torch.tensor(bool_mask)
+
+
 # push each prototype to the nearest patch in the training set
 def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0,1])
                     prototype_network_parallel, # pytorch network with prototype_vectors
@@ -91,16 +113,16 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
         '''
         start_index_of_search_batch = push_iter * search_batch_size
 
-        #update_prototypes_on_batch_heaps(search_batch_input=search_batch_input,
-        #                                 start_index_of_search_batch=start_index_of_search_batch,
-        #                                 model=prototype_network_parallel,
-        #                                 class_specific=class_specific,
-        #                                 search_y=search_y,  # required if class_specific == True
-        #                                 num_classes=num_classes,
-        #                                 preprocess_input_function=preprocess_input_function,
-        #                                 prototype_layer_stride=prototype_layer_stride,
-        #                                 prototype_activation_function_in_numpy=None,
-        #                                 heaps=heaps)
+        update_prototypes_on_batch_heaps(search_batch_input=search_batch_input,
+                                        start_index_of_search_batch=start_index_of_search_batch,
+                                        model=prototype_network_parallel,
+                                        class_specific=class_specific,
+                                        search_y=search_batch_input['image'][1],  # required if class_specific == True
+                                        num_classes=num_classes,
+                                        preprocess_input_function=preprocess_input_function,
+                                        prototype_layer_stride=prototype_layer_stride,
+                                        prototype_activation_function_in_numpy=None,
+                                        heaps=heaps)
 
         update_prototypes_on_batch(search_batch_input,
                                    start_index_of_search_batch,
@@ -118,6 +140,28 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
                                    prototype_img_filename_prefix=prototype_img_filename_prefix,
                                    prototype_self_act_filename_prefix=prototype_self_act_filename_prefix,
                                    prototype_activation_function_in_numpy=prototype_activation_function_in_numpy)
+
+    jaccard = []
+
+    for hidx, h in enumerate(heaps):
+        if len(h) == 0:
+            continue
+        h.sort()
+        for hh in h:
+            img = hh.patch
+            mask = hh.mask_patch
+            bool_mask = create_boolean_mask(mask)
+            num_white_pixels = torch.sum(bool_mask).item()
+            jaccard.append(num_white_pixels / (bool_mask.shape[0] * bool_mask.shape[1]))
+            print(img.shape)
+            print(mask.shape)
+            filename = hh.filename
+            print(filename)
+        print('----')
+
+    import statistics
+    print('Jaccard: ', statistics.mean(jaccard))
+    print('Fine-tuning')
 
     if proto_epoch_dir != None and proto_bound_boxes_filename_prefix != None:
         np.save(os.path.join(proto_epoch_dir, proto_bound_boxes_filename_prefix + '-receptive_field' + str(epoch_number) + '.npy'),
