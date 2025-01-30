@@ -1,6 +1,6 @@
 img_size = 224
 prototype_shape = (2000, 64, 1, 1)
-num_classes = 200
+num_classes = 3
 prototype_activation_function = 'log'
 add_on_layers_type = 'regular'
 
@@ -12,7 +12,7 @@ test_dir = data_path + 'test/'
 train_push_dir = data_path + 'train/'
 
 train_batch_size = 80
-test_batch_size = 100
+test_batch_size = 50
 train_push_batch_size =75
 
 joint_optimizer_lrs = {'features': 1e-4,
