@@ -400,10 +400,10 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
     if preprocess_input_function is not None:
         # print('preprocessing input for pushing ...')
         # search_batch = copy.deepcopy(search_batch_input)
-        search_batch = preprocess_input_function(search_batch_input)
+        search_batch = preprocess_input_function(search_batch_input['image'][0])
 
     else:
-        search_batch = search_batch_input
+        search_batch = search_batch_input['image'][0]
 
     with torch.no_grad():
         search_batch = search_batch.cuda()
