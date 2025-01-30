@@ -93,7 +93,7 @@ for model_dir,model_name in zip(model_dir_list,model_name_list):
                                      std=std)
 
     # load the test data and check test accuracy
-    from settings_MITO import test_dir
+    from settings_mito import test_dir
     if check_test_accu:
         test_batch_size = 100
 
