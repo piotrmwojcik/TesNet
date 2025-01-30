@@ -34,10 +34,10 @@ coefs = {
     'sub_sep': -1e-7,
 }
 
-num_train_epochs = 20
-num_warm_epochs = 5
+num_train_epochs = 10
+num_warm_epochs = 3
 
-push_start = 10
-push_epochs = [i for i in range(num_train_epochs) if i % 10 == 0]
+push_start = 4
+push_epochs = [i for i in range(num_train_epochs)]
 
 #print(push_epochs)

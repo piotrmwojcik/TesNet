@@ -34,7 +34,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpuid[0]
 # specify the test image to be analyzed
 
 
-image_dir = "/data/pwojcik/TesNet/saved_models/MITO/vgg19/test"
+image_dir = "/data/pwojcik/mito_work/dataset_512_protopool/test/0_fl_fl"
 image_name = "10kX_914-wt__0101.png"
 image_label =  0
 
@@ -47,7 +47,7 @@ test_image_path = os.path.join(test_image_dir, test_image_name)
 # load the model
 check_test_accu = False
 
-model_dir_list = []
+model_dir_list = ['/data/pwojcik/TesNet/saved_models/MITO/vgg19/test/']
 model_name_list = [ ]
 
 for model_dir,model_name in zip(model_dir_list,model_name_list):
