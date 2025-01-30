@@ -15,7 +15,7 @@ from util import save
 from util.log import create_logger
 from util.preprocess import mean, std, preprocess_input_function
 
-import settings_CUB
+import settings_CUB, settings_mito
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-gpuid',type=str, default='0')
@@ -86,6 +86,33 @@ if dataset_name == "CUB":
     num_warm_epochs = settings_CUB.num_warm_epochs
     push_start = settings_CUB.push_start
     push_epochs = settings_CUB.push_epochs
+elif dataset_name == "MITO":
+        # model param
+        num_classes = settings_mito.num_classes
+        img_size = settings_mito.img_size
+        add_on_layers_type = settings_mito.add_on_layers_type
+        prototype_shape = settings_mito.prototype_shape
+        prototype_activation_function = settings_mito.prototype_activation_function
+        # datasets
+        train_dir = settings_mito.train_dir
+        test_dir = settings_mito.test_dir
+        train_push_dir = settings_mito.train_push_dir
+        train_batch_size = settings_mito.train_batch_size
+        test_batch_size = settings_mito.test_batch_size
+        train_push_batch_size = settings_mito.train_push_batch_size
+        # optimzer
+        joint_optimizer_lrs = settings_mito.joint_optimizer_lrs
+        joint_lr_step_size = settings_mito.joint_lr_step_size
+        warm_optimizer_lrs = settings_mito.warm_optimizer_lrs
+
+        last_layer_optimizer_lr = settings_mito.last_layer_optimizer_lr
+        # weighting of different training losses
+        coefs = settings_mito.coefs
+        # number of training epochs, number of warm epochs, push start epoch, push epochs
+        num_train_epochs = settings_mito.num_train_epochs
+        num_warm_epochs = settings_mito.num_warm_epochs
+        push_start = settings_mito.push_start
+        push_epochs = settings_mito.push_epochs
 
 else:
     raise Exception("there are no settings file of datasets {}".format(dataset_name))
