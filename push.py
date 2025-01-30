@@ -519,6 +519,8 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
             mask_tensor = mask_tensor[:, proto_bound_j[0]: proto_bound_j[1], proto_bound_j[2]: proto_bound_j[3]]
 
             he = HeapPatch(distance=-heap_dist, patch=proto_img_j, mask_patch=mask_tensor, filename=filename_j)
+
+            print('!!! ', he, len(heaps[j]))
             if len(heaps[j]) < 5:
                 heapq.heappush(heaps[j], he)
             else:
