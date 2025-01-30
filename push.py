@@ -231,9 +231,11 @@ def update_prototypes_on_batch(search_batch_input,
             # that generates the representation
             protoL_rf_info = prototype_network_parallel.module.proto_layer_rf_info
             rf_prototype_j = compute_rf_prototype(search_batch.size(2), batch_argmin_proto_dist_j, protoL_rf_info)
-            
+
+            filename_j = search_batch_input['filename'][rf_prototype_j[0]]
+
             # get the whole image
-            original_img_j = search_batch_input[rf_prototype_j[0]]
+            original_img_j = search_batch_input['image'][0][rf_prototype_j[0]]
             original_img_j = original_img_j.numpy()
             original_img_j = np.transpose(original_img_j, (1, 2, 0))
             original_img_size = original_img_j.shape[0]
@@ -280,12 +282,12 @@ def update_prototypes_on_batch(search_batch_input,
                 if prototype_self_act_filename_prefix is not None:
                     # save the numpy array of the prototype self activation
                     np.save(os.path.join(dir_for_saving_prototypes,
-                                         prototype_self_act_filename_prefix + str(j) + '.npy'),
+                                         prototype_self_act_filename_prefix + filename_j + str(j) + '.npy'),
                             proto_act_img_j)
                 if prototype_img_filename_prefix is not None:
                     # save the whole image containing the prototype as png
                     plt.imsave(os.path.join(dir_for_saving_prototypes,
-                                            prototype_img_filename_prefix + '-original' + str(j) + '.png'),
+                                            prototype_img_filename_prefix + '-original' + filename_j + str(j) + '.png'),
                                original_img_j,
                                vmin=0.0,
                                vmax=1.0)
@@ -450,18 +452,19 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
 
             # find the highly activated region of the original image
             proto_dist_img_j = proto_dist_[img_index_in_batch, j, :, :]
-            if model.prototype_activation_function == 'log':
-                proto_act_img_j = np.log((proto_dist_img_j + 1) / (proto_dist_img_j + model.epsilon))
-            elif model.prototype_activation_function == 'linear':
-                proto_act_img_j = max_dist - proto_dist_img_j
-            else:
-                proto_act_img_j = prototype_activation_function_in_numpy(proto_dist_img_j)
+            proto_act_img_j = - proto_dist_img_j
+            # if prototype_network_parallel.module.prototype_activation_function == 'log':
+            #     proto_act_img_j = np.log((proto_dist_img_j + 1) / (proto_dist_img_j + prototype_network_parallel.module.epsilon))
+            # elif prototype_network_parallel.module.prototype_activation_function == 'linear':
+            #     proto_act_img_j = max_dist - proto_dist_img_j
+            # else:
+            #     proto_act_img_j = prototype_activation_function_in_numpy(proto_dist_img_j)
             upsampled_act_img_j = cv2.resize(proto_act_img_j, dsize=(original_img_size, original_img_size),
                                              interpolation=cv2.INTER_CUBIC)
             proto_bound_j = find_high_activation_crop(upsampled_act_img_j)
             # crop out the image patch with high activation as prototype image
             proto_img_j = original_img_j[proto_bound_j[0]:proto_bound_j[1],
-                          proto_bound_j[2]:proto_bound_j[3], :]
+                                         proto_bound_j[2]:proto_bound_j[3], :]
 
             mask_filename = f"mask_{filename_j}.png"
             mask_path = os.path.join('/data/pwojcik/mito_work/dataset_512_all/', mask_filename)
