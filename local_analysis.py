@@ -34,9 +34,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = args.gpuid[0]
 # specify the test image to be analyzed
 
 
-image_dir = "./local_analysis/class29"
-image_name = "American_Crow_0001_25053.jpg"
-image_label =  28
+image_dir = "/data/pwojcik/TesNet/saved_models/MITO/vgg19/test"
+image_name = "10kX_914-wt__0101.png"
+image_label =  0
 
 test_image_dir = image_dir
 test_image_name = image_name
@@ -279,7 +279,7 @@ for model_dir,model_name in zip(model_dir_list,model_name_list):
         log('--------------------------------------------------------------')
 
     ##### PROTOTYPES FROM TOP-k CLASSES
-    k = 10
+    k = 3
     log('Prototypes from top-%d classes:' % k)
     topk_logits, topk_classes = torch.topk(logits[idx], k=k)
     for i,c in enumerate(topk_classes.detach().cpu().numpy()):
