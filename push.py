@@ -4,6 +4,12 @@ import matplotlib.pyplot as plt
 import cv2
 import os
 import time
+from torchvision import transforms, datasets
+
+import heapq
+import torchvision.transforms.functional as F
+from PIL import Image
+from typing import List, Optional
 
 from util.receptive_field import compute_rf_prototype
 from util.helpers import makedir, find_high_activation_crop
@@ -72,12 +78,27 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
 
     num_classes = prototype_network_parallel.module.num_classes
 
+    heaps = []
+    # allocate an array of n_prototypes number of heaps
+    for _ in range(prototype_network_parallel.module.num_prototypes):
+        # a heap in python is just a maintained list
+        heaps.append([])
+
     for push_iter, (search_batch_input, search_y) in enumerate(dataloader):
         '''
         start_index_of_search keeps track of the index of the image
         assigned to serve as prototype
         '''
         start_index_of_search_batch = push_iter * search_batch_size
+
+        update_prototypes_on_batch_heaps(search_batch_input=search_batch_input,
+                                         start_index_of_search_batch=start_index_of_search_batch,
+                                         model=prototype_network_parallel,
+                                         class_specific=True,
+                                         search_y=search_batch_input['image'][1],  # required if class_specific == True
+                                         prototype_layer_stride=1,
+                                         prototype_activation_function_in_numpy=None,
+                                         heaps=heaps)
 
         update_prototypes_on_batch(search_batch_input,
                                    start_index_of_search_batch,
@@ -303,3 +324,151 @@ def update_prototypes_on_batch(search_batch_input,
                 
     if class_specific:
         del class_to_img_index_dict
+
+
+class HeapPatch:
+    def __init__(self, patch, filename, distance, mask_patch):
+        self.patch = patch
+        self.filename = filename
+        self.mask_patch = mask_patch
+        self.distance = distance
+
+    def __lt__(self, other):
+        return self.distance < other.distance
+
+
+def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_batch,
+                               model,
+                               class_specific=True,
+                               search_y=None,  # required if class_specific == True
+                               prototype_layer_stride=1,
+                               prototype_activation_function_in_numpy=None,
+                               heaps=None
+                               ):
+    model.eval()
+    search_batch = search_batch_input['image'][0]
+
+    with torch.no_grad():
+        search_batch = search_batch.cuda()
+        # this computation currently is not parallelized
+        proto_dist_torch = model.prototype_distances(search_batch)
+        protoL_input_torch = model.conv_features(search_batch)
+
+    protoL_input_ = np.copy(protoL_input_torch.detach().cpu().numpy())
+    proto_dist_ = np.copy(proto_dist_torch.detach().cpu().numpy())
+
+    del protoL_input_torch, proto_dist_torch
+
+    prototype_shape = model.prototype_shape
+    n_prototypes = prototype_shape[0]
+    proto_h = prototype_shape[2]
+    proto_w = prototype_shape[3]
+    max_dist = prototype_shape[1] * prototype_shape[2] * prototype_shape[3]
+
+    if class_specific:
+        map_class_to_prototypes = model.get_map_class_to_prototypes()
+        protype_to_img_index_dict = {key: [] for key in range(n_prototypes)}
+        # img_y is the image's integer label
+
+        for img_index, img_y in enumerate(search_y):
+            img_label = img_y.item()
+            [protype_to_img_index_dict[prototype].append(
+                img_index) for prototype in map_class_to_prototypes[img_label]]
+
+    for j in range(n_prototypes):
+        if class_specific:
+            # target_class is the class of the class_specific prototype
+
+            # if there is not images of the target_class from this batch
+            # we go on to the next prototype
+            if len(protype_to_img_index_dict[j]) == 0:
+                continue
+            proto_dist_j = proto_dist_[protype_to_img_index_dict[j]][:, j]
+        else:
+            # if it is not class specific, then we will search through
+            # every example
+            proto_dist_j = proto_dist_[:, j]
+
+        batch_min_proto_dist_j = np.amin(proto_dist_j)
+
+        heap_dist = batch_min_proto_dist_j
+
+        if (len(heaps[j]) < 5) or (batch_min_proto_dist_j < -heaps[j][0].distance):
+            batch_argmin_proto_dist_j = \
+                list(np.unravel_index(np.argmin(proto_dist_j, axis=None),
+                                      proto_dist_j.shape))
+
+            if class_specific:
+                '''
+                change the argmin index from the index among
+                images of the target class to the index in the entire search
+                batch
+                '''
+
+                batch_argmin_proto_dist_j[0] = protype_to_img_index_dict[j][batch_argmin_proto_dist_j[0]]
+
+            # retrieve the corresponding feature map patch
+            img_index_in_batch = batch_argmin_proto_dist_j[0]
+            fmap_height_start_index = batch_argmin_proto_dist_j[1] * \
+                                      prototype_layer_stride
+            fmap_height_end_index = fmap_height_start_index + proto_h
+            fmap_width_start_index = batch_argmin_proto_dist_j[2] * \
+                                     prototype_layer_stride
+            fmap_width_end_index = fmap_width_start_index + proto_w
+
+            batch_min_fmap_patch_j = protoL_input_[img_index_in_batch,
+                                     :,
+                                     fmap_height_start_index:fmap_height_end_index,
+                                     fmap_width_start_index:fmap_width_end_index]
+
+
+            # get the receptive field boundary of the image patch
+            # that generates the representation
+            # protoL_rf_info = model.proto_layer_rf_info
+            layer_filter_sizes, layer_strides, layer_paddings = model.features.conv_info()
+            #protoL_rf_info = compute_proto_layer_rf_info_v2(512, layer_filter_sizes, layer_strides, layer_paddings,
+            #                                                prototype_kernel_size=1)
+            rf_prototype_j = compute_rf_prototype(search_batch.size(2), batch_argmin_proto_dist_j, protoL_rf_info)
+
+            filename_j = search_batch_input['filename'][rf_prototype_j[0]]
+            # get the whole image
+            original_img_j = search_batch_input['image'][0][rf_prototype_j[0]]
+            original_img_j = original_img_j.numpy()
+            original_img_j = np.transpose(original_img_j, (1, 2, 0))
+            original_img_size = original_img_j.shape[0]
+            original_img_j = (original_img_j - np.min(original_img_j)) / np.max(original_img_j - np.min(original_img_j))
+
+            # crop out the receptive field
+            rf_img_j = original_img_j[rf_prototype_j[1]:rf_prototype_j[2],
+                       rf_prototype_j[3]:rf_prototype_j[4], :]
+
+
+            # find the highly activated region of the original image
+            proto_dist_img_j = proto_dist_[img_index_in_batch, j, :, :]
+            if model.prototype_activation_function == 'log':
+                proto_act_img_j = np.log((proto_dist_img_j + 1) / (proto_dist_img_j + model.epsilon))
+            elif model.prototype_activation_function == 'linear':
+                proto_act_img_j = max_dist - proto_dist_img_j
+            else:
+                proto_act_img_j = prototype_activation_function_in_numpy(proto_dist_img_j)
+            upsampled_act_img_j = cv2.resize(proto_act_img_j, dsize=(original_img_size, original_img_size),
+                                             interpolation=cv2.INTER_CUBIC)
+            proto_bound_j = find_high_activation_crop(upsampled_act_img_j)
+            # crop out the image patch with high activation as prototype image
+            proto_img_j = original_img_j[proto_bound_j[0]:proto_bound_j[1],
+                          proto_bound_j[2]:proto_bound_j[3], :]
+
+            mask_filename = f"mask_{filename_j}.png"
+            mask_path = os.path.join('/data/pwojcik/mito_work/dataset_512_all/', mask_filename)
+            mask = Image.open(mask_path).convert("RGB")
+            mask = transforms.Resize((original_img_j.shape[0], original_img_j.shape[1]))(mask)
+            mask_tensor = transforms.ToTensor()(mask)
+            mask_tensor = mask_tensor[:, proto_bound_j[0]: proto_bound_j[1], proto_bound_j[2]: proto_bound_j[3]]
+
+            he = HeapPatch(distance=-heap_dist, patch=proto_img_j, mask_patch=mask_tensor, filename=filename_j)
+            if len(heaps[j]) < 5:
+                heapq.heappush(heaps[j], he)
+            else:
+                heapq.heappop(heaps[j])
+                heapq.heappush(heaps[j], he)
+
