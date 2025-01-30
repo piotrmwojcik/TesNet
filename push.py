@@ -115,7 +115,7 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
 
         update_prototypes_on_batch_heaps(search_batch_input=search_batch_input,
                                         start_index_of_search_batch=start_index_of_search_batch,
-                                        model=prototype_network_parallel,
+                                        prototype_network_parallel=prototype_network_parallel,
                                         class_specific=class_specific,
                                         search_y=search_batch_input['image'][1],  # required if class_specific == True
                                         num_classes=num_classes,
