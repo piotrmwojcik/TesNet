@@ -1,6 +1,16 @@
 import os
 import torch
 
+class HeapPatch:
+    def __init__(self, patch, filename, distance, mask_patch):
+        self.patch = patch
+        self.filename = filename
+        self.mask_patch = mask_patch
+        self.distance = distance
+
+    def __lt__(self, other):
+        return self.distance < other.distance
+
 def save_model_w_condition(model, model_dir, model_name, accu, target_accu, log=print):
     '''
     model: this is not the multigpu model

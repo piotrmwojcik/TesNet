@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from util.receptive_field import compute_rf_prototype
 from util.helpers import makedir, find_high_activation_crop
+from util.save import HeapPatch
 
 
 def create_boolean_mask(mask_img):
@@ -374,17 +375,6 @@ def update_prototypes_on_batch(search_batch_input,
         del class_to_img_index_dict
 
 
-class HeapPatch:
-    def __init__(self, patch, filename, distance, mask_patch):
-        self.patch = patch
-        self.filename = filename
-        self.mask_patch = mask_patch
-        self.distance = distance
-
-    def __lt__(self, other):
-        return self.distance < other.distance
-
-
 def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_batch,
                                      prototype_network_parallel,
                                      class_specific=True,
@@ -520,7 +510,6 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
 
             he = HeapPatch(distance=-heap_dist, patch=proto_img_j, mask_patch=mask_tensor, filename=filename_j)
 
-            print('!!! ', he, len(heaps[j]))
             if len(heaps[j]) < 5:
                 heapq.heappush(heaps[j], he)
             else:
