@@ -84,7 +84,7 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
         # a heap in python is just a maintained list
         heaps.append([])
 
-    for push_iter, (search_batch_input, search_y) in enumerate(dataloader):
+    for push_iter, search_batch_input in enumerate(dataloader):
         '''
         start_index_of_search keeps track of the index of the image
         assigned to serve as prototype
@@ -110,7 +110,7 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
                                    proto_rf_boxes,
                                    proto_bound_boxes,
                                    class_specific=class_specific,
-                                   search_y=search_y,
+                                   search_y=search_batch_input['image'][1],
                                    num_classes=num_classes,
                                    preprocess_input_function=preprocess_input_function,
                                    prototype_layer_stride=prototype_layer_stride,
