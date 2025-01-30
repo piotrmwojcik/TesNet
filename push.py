@@ -479,6 +479,7 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
             #layer_filter_sizes, layer_strides, layer_paddings = prototype_network_parallel.features.conv_info()
             #protoL_rf_info = compute_proto_layer_rf_info_v2(512, layer_filter_sizes, layer_strides, layer_paddings,
             #                                                prototype_kernel_size=1)
+            protoL_rf_info = prototype_network_parallel.module.proto_layer_rf_info
             rf_prototype_j = compute_rf_prototype(search_batch.size(2), batch_argmin_proto_dist_j, protoL_rf_info)
 
             filename_j = search_batch_input['filename'][rf_prototype_j[0]]
