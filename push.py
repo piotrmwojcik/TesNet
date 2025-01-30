@@ -433,9 +433,10 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
             # every example
             proto_dist_j = proto_dist_[:,j,:,:] #[batchsize,14,14]
 
-        heap_dist = proto_dist_j
+        batch_min_proto_dist_j = np.amin(proto_dist_j)
+        heap_dist = batch_min_proto_dist_j
 
-        if (len(heaps[j]) < 5) or (proto_dist_j < -heaps[j][0].distance):
+        if (len(heaps[j]) < 5) or (batch_min_proto_dist_j < -heaps[j][0].distance):
             batch_argmin_proto_dist_j = \
                 list(np.unravel_index(np.argmin(proto_dist_j, axis=None),
                                       proto_dist_j.shape))
@@ -511,7 +512,6 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
             he = HeapPatch(distance=-heap_dist, patch=proto_img_j, mask_patch=mask_tensor, filename=filename_j)
 
             if len(heaps[j]) < 5:
-                print(len(heaps[j]), he.distance, j)
                 heapq.heappush(heaps[j], he)
             else:
                 heapq.heappop(heaps[j])
