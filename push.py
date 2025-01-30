@@ -91,14 +91,16 @@ def push_prototypes(dataloader, # pytorch dataloader (must be unnormalized in [0
         '''
         start_index_of_search_batch = push_iter * search_batch_size
 
-        update_prototypes_on_batch_heaps(search_batch_input=search_batch_input,
-                                         start_index_of_search_batch=start_index_of_search_batch,
-                                         model=prototype_network_parallel,
-                                         class_specific=True,
-                                         search_y=search_batch_input['image'][1],  # required if class_specific == True
-                                         prototype_layer_stride=1,
-                                         prototype_activation_function_in_numpy=None,
-                                         heaps=heaps)
+        #update_prototypes_on_batch_heaps(search_batch_input=search_batch_input,
+        #                                 start_index_of_search_batch=start_index_of_search_batch,
+        #                                 model=prototype_network_parallel,
+        #                                 class_specific=class_specific,
+        #                                 search_y=search_y,  # required if class_specific == True
+        #                                 num_classes=num_classes,
+        #                                 preprocess_input_function=preprocess_input_function,
+        #                                 prototype_layer_stride=prototype_layer_stride,
+        #                                 prototype_activation_function_in_numpy=None,
+        #                                 heaps=heaps)
 
         update_prototypes_on_batch(search_batch_input,
                                    start_index_of_search_batch,
@@ -154,10 +156,10 @@ def update_prototypes_on_batch(search_batch_input,
     if preprocess_input_function is not None:
         # print('preprocessing input for pushing ...')
         # search_batch = copy.deepcopy(search_batch_input)
-        search_batch = preprocess_input_function(search_batch_input)
+        search_batch = preprocess_input_function(search_batch_input['image'][0])
 
     else:
-        search_batch = search_batch_input
+        search_batch = search_batch_input['image'][0]
 
     with torch.no_grad():
         search_batch = search_batch.cuda()
@@ -338,62 +340,66 @@ class HeapPatch:
 
 
 def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_batch,
-                               model,
-                               class_specific=True,
-                               search_y=None,  # required if class_specific == True
-                               prototype_layer_stride=1,
-                               prototype_activation_function_in_numpy=None,
-                               heaps=None
-                               ):
-    model.eval()
-    search_batch = search_batch_input['image'][0]
+                                     prototype_network_parallel,
+                                     class_specific=True,
+                                     search_y=None,
+                                     num_classes=None,
+                                     preprocess_input_function=None,# required if class_specific == True
+                                     prototype_layer_stride=1,
+                                     prototype_activation_function_in_numpy=None,
+                                     heaps=None
+                                    ):
+    prototype_network_parallel.eval()
+
+    if preprocess_input_function is not None:
+        # print('preprocessing input for pushing ...')
+        # search_batch = copy.deepcopy(search_batch_input)
+        search_batch = preprocess_input_function(search_batch_input)
+
+    else:
+        search_batch = search_batch_input
 
     with torch.no_grad():
         search_batch = search_batch.cuda()
         # this computation currently is not parallelized
-        proto_dist_torch = model.prototype_distances(search_batch)
-        protoL_input_torch = model.conv_features(search_batch)
+        protoL_input_torch, proto_dist_torch = prototype_network_parallel.module.push_forward(search_batch)
 
-    protoL_input_ = np.copy(protoL_input_torch.detach().cpu().numpy())
-    proto_dist_ = np.copy(proto_dist_torch.detach().cpu().numpy())
+    protoL_input_ = np.copy(protoL_input_torch.detach().cpu().numpy())#[batchsize,128,14,14]
+    proto_dist_ = np.copy(proto_dist_torch.detach().cpu().numpy())#[batchsize,2000,14,14]
 
     del protoL_input_torch, proto_dist_torch
 
-    prototype_shape = model.prototype_shape
-    n_prototypes = prototype_shape[0]
+    if class_specific:
+        class_to_img_index_dict = {key: [] for key in range(num_classes)}
+        # img_y is the image's integer label
+        for img_index, img_y in enumerate(search_y):
+            img_label = img_y.item()
+            class_to_img_index_dict[img_label].append(img_index)
+
+
+    prototype_shape = prototype_network_parallel.module.prototype_shape
+    n_prototypes = prototype_shape[0] #2000
     proto_h = prototype_shape[2]
     proto_w = prototype_shape[3]
     max_dist = prototype_shape[1] * prototype_shape[2] * prototype_shape[3]
 
-    if class_specific:
-        map_class_to_prototypes = model.get_map_class_to_prototypes()
-        protype_to_img_index_dict = {key: [] for key in range(n_prototypes)}
-        # img_y is the image's integer label
-
-        for img_index, img_y in enumerate(search_y):
-            img_label = img_y.item()
-            [protype_to_img_index_dict[prototype].append(
-                img_index) for prototype in map_class_to_prototypes[img_label]]
-
     for j in range(n_prototypes):
         if class_specific:
             # target_class is the class of the class_specific prototype
-
+            target_class = torch.argmax(prototype_network_parallel.module.prototype_class_identity[j]).item()
             # if there is not images of the target_class from this batch
             # we go on to the next prototype
-            if len(protype_to_img_index_dict[j]) == 0:
+            if len(class_to_img_index_dict[target_class]) == 0:
                 continue
-            proto_dist_j = proto_dist_[protype_to_img_index_dict[j]][:, j]
+            proto_dist_j = proto_dist_[class_to_img_index_dict[target_class]][:,j,:,:] #
         else:
             # if it is not class specific, then we will search through
             # every example
-            proto_dist_j = proto_dist_[:, j]
+            proto_dist_j = proto_dist_[:,j,:,:] #[batchsize,14,14]
 
-        batch_min_proto_dist_j = np.amin(proto_dist_j)
+        heap_dist = proto_dist_j
 
-        heap_dist = batch_min_proto_dist_j
-
-        if (len(heaps[j]) < 5) or (batch_min_proto_dist_j < -heaps[j][0].distance):
+        if (len(heaps[j]) < 5) or (proto_dist_j < -heaps[j][0].distance):
             batch_argmin_proto_dist_j = \
                 list(np.unravel_index(np.argmin(proto_dist_j, axis=None),
                                       proto_dist_j.shape))
@@ -404,8 +410,7 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
                 images of the target class to the index in the entire search
                 batch
                 '''
-
-                batch_argmin_proto_dist_j[0] = protype_to_img_index_dict[j][batch_argmin_proto_dist_j[0]]
+                batch_argmin_proto_dist_j[0] = class_to_img_index_dict[target_class][batch_argmin_proto_dist_j[0]]
 
             # retrieve the corresponding feature map patch
             img_index_in_batch = batch_argmin_proto_dist_j[0]
@@ -425,7 +430,7 @@ def update_prototypes_on_batch_heaps(search_batch_input, start_index_of_search_b
             # get the receptive field boundary of the image patch
             # that generates the representation
             # protoL_rf_info = model.proto_layer_rf_info
-            layer_filter_sizes, layer_strides, layer_paddings = model.features.conv_info()
+            #layer_filter_sizes, layer_strides, layer_paddings = prototype_network_parallel.features.conv_info()
             #protoL_rf_info = compute_proto_layer_rf_info_v2(512, layer_filter_sizes, layer_strides, layer_paddings,
             #                                                prototype_kernel_size=1)
             rf_prototype_j = compute_rf_prototype(search_batch.size(2), batch_argmin_proto_dist_j, protoL_rf_info)

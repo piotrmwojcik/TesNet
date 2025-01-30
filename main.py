@@ -121,6 +121,23 @@ log(train_dir)
 
 normalize = transforms.Normalize(mean=mean,std=std)
 
+
+class ImageFolderWithFilenames(datasets.ImageFolder):
+    def __init__(self, root, transform=None):
+        # Initialize the parent class with the provided root and transform
+        super().__init__(root, transform=transform)
+
+    def __getitem__(self, index):
+        # Get the original output from ImageFolder (image and label)
+        image, label = super().__getitem__(index)
+
+        # Get the image path and extract the filename (without extension)
+        path, _ = self.imgs[index]
+        filename = os.path.splitext(os.path.basename(path))[0]
+        # Return the image, label, and filename
+        return {'image': (image, label), 'filename': filename}
+
+
 # all datasets
 # train set
 train_dataset = datasets.ImageFolder(
@@ -134,7 +151,7 @@ train_loader = torch.utils.data.DataLoader(
     train_dataset, batch_size=train_batch_size, shuffle=True,
     num_workers=4, pin_memory=False)
 # push set
-train_push_dataset = datasets.ImageFolder(
+train_push_dataset = ImageFolderWithFilenames(
     train_push_dir,
     transforms.Compose([
         transforms.Resize(size=(img_size, img_size)),
